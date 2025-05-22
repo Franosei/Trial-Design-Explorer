@@ -45,10 +45,11 @@ def show_duration_panel(df):
         barmode="overlay",  # Options: "group", "stack", "overlay"
         opacity=0.75
     )
+    
     fig.update_layout(
-        template="plotly",  # <- Theme-aware by default
-        margin=dict(t=60, b=50, l=250, r=30),
-        height=750
+    template="plotly",  # makes it theme-aware
+    margin=dict(t=60, b=40, l=100, r=30),
+    height=min(len(df) * 35 + 100, 1200)
     )
     st.plotly_chart(fig, use_container_width=True)
 
