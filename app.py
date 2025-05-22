@@ -169,7 +169,7 @@ if "df_trials" in st.session_state:
         show_sponsor_panel(df)
 
     else:
-        st.info("More analytics coming soon.")
+        st.info("More predictive analytics coming soon.")
 
 else:
     st.markdown("""
