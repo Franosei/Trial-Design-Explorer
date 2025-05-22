@@ -50,6 +50,7 @@ def show_duration_panel(df):
         margin=dict(t=60, b=50, l=250, r=30),
         height=750
     )
+    st.plotly_chart(fig, use_container_width=True)
 
 
     st.plotly_chart(fig, use_container_width=True)
