@@ -46,12 +46,11 @@ def show_duration_panel(df):
         opacity=0.75
     )
     fig.update_layout(
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        font=dict(color="#333333"),
-        margin=dict(t=40, b=20),
-        legend_title_text="Status"
+        template="plotly",  # <- Theme-aware by default
+        margin=dict(t=60, b=50, l=250, r=30),
+        height=750
     )
+
 
     st.plotly_chart(fig, use_container_width=True)
     
