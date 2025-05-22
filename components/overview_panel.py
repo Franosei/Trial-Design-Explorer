@@ -27,11 +27,12 @@ def show_overview(df):
         pull=[0.05]*len(type_counts),
         marker=dict(line=dict(color="#000000", width=1))
     )
+
     fig_pie.update_layout(
-        height=450,
-        margin=dict(t=40, b=40, r=40, l=40),
-        font=dict(size=13, color="#333333"),
-        showlegend=True
+    template="plotly",  # Theme-aware background
+    margin=dict(t=60, b=40, l=100, r=30),  # Reduce l=250 if not needed
+    height=min(len(df), 1200),  # Dynamically based on bar count
+    showlegend=True
     )
     st.plotly_chart(fig_pie, use_container_width=True, key=f"study_type_pie_{unique_id}")
 
@@ -48,13 +49,16 @@ def show_overview(df):
         title="Trial Phases",
         height=400
     )
+    
+    
     fig2.update_layout(
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        font=dict(color="#333333"),
-        title_font=dict(size=20),
-        margin=dict(t=40, b=10)
+    template="plotly",  # Theme-aware background
+    margin=dict(t=60, b=40, l=100, r=30),  # Reduce l=250 if not needed
+    height=min(len(df), 1200),  # Dynamically based on bar count
+    showlegend=True
     )
+    
+
     st.plotly_chart(fig2, use_container_width=True, key=f"phase_chart_{unique_id}")
 
     # ------------------ Trial Status Pie Chart ------------------
@@ -71,21 +75,13 @@ def show_overview(df):
             color_discrete_sequence=px.colors.sequential.Cividis
         )
         fig_status.update_layout(
-            height=600,
-            width=1000,
-            margin=dict(t=60, b=80, l=80, r=250),
+            template="plotly", 
+            height=min(len(df), 1200),
+            margin=dict(t=60, b=40, l=100, r=30),
             legend_title="Status",
-            legend=dict(
-                font=dict(size=12),
-                orientation="v",
-                yanchor="middle",
-                y=0.5,
-                xanchor="right",
-                x=1.25
-            ),
-            font=dict(size=14, color="#333333"),
             showlegend=True
         )
+        
 
         st.plotly_chart(fig_status, use_container_width=False, key=f"status_pie_chart_{unique_id}")
     else:

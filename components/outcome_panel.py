@@ -149,14 +149,14 @@ def show_outcome_panel(df):
     )
 
     fig.update_layout(
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        font=dict(color="#333333", size=14),
+        template="plotly",
         margin=dict(t=60, b=50, l=300, r=30),
         height=chart_height,
         yaxis_title="Outcome",
         legend_title="Outcome Type",
-        bargap=0.15
+        bargap=0.15,
+        showlegend=True
     )
+    
 
     st.plotly_chart(fig, use_container_width=True)

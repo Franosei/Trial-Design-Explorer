@@ -30,10 +30,9 @@ def show_timeline_panel(df):
 
     # Update layout for better appearance
     fig.update_layout(
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        template="plotly",
         margin=dict(t=50, b=50, r=30, l=30),
-        font=dict(color="#333333", size=14)
+     
     )
 
     # Display the chart
