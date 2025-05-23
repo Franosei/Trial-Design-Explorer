@@ -63,7 +63,6 @@ TRIAL-DESIGN-EXPLORER/
 ## Getting Started
 
 ```bash
----
 
 ### Clone the repository
 
@@ -73,15 +72,12 @@ git clone https://github.com/Franosei/Trial-Design-Explorer.git
 cd Trial-Design-Explorer
 
 ### Install dependencies
-
 ```
 ```bash
 pip install -r requirements.txt
 
 
-
 ### Run the Streamlit app
-
 ```
 ```bash
 python -m streamlit run app.py
