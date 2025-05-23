@@ -61,16 +61,17 @@ TRIAL-DESIGN-EXPLORER/
 ---
 
 ## Getting Started
+
+```bash
 ---
 
-### 1. Clone the repository
+### Clone the repository
 
 ```bash
 git clone https://github.com/Franosei/Trial-Design-Explorer.git
 cd Trial-Design-Explorer
 
-
-### 2. Install dependencies
+### Install dependencies
 
 ```
 ```bash
@@ -78,7 +79,7 @@ pip install -r requirements.txt
 
 ---
 
-### 3. Run the Streamlit app
+### Run the Streamlit app
 
 ```
 ```bash
@@ -92,7 +93,7 @@ python -m streamlit run app.py
 
 ---
 
-### 5. Use Case Example
+### Use Case Example
 
 Planning a Sepsis Trial?
 
@@ -104,7 +105,7 @@ Planning a Sepsis Trial?
 
 ---
 
-### 6. Future Roadmap
+### Future Roadmap
 
  - GPT-powered clinical summary generator
  - Evidence-based trial design suggestions
@@ -112,7 +113,7 @@ Planning a Sepsis Trial?
 
 ---
 
-### 7. Citation
+### Citation
 
 - If you use this tool for academic or professional work, please credit:
 
