@@ -56,7 +56,7 @@ TRIAL-DESIGN-EXPLORER/
 ├── config.py
 └── README.md
 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
 ## Getting Started
 
@@ -65,25 +65,28 @@ TRIAL-DESIGN-EXPLORER/
 ```bash
 git clone https://github.com/Franosei/Trial-Design-Explorer.git
 cd Trial-Design-Explorer
--------------------------------------------------------------------------------------------------------------------
+
+---
 
 ### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
--------------------------------------------------------------------------------------------------------------------
+
+---
 
 ### 3. Run the Streamlit app
 
 ```bash
 python -m streamlit run app.py
--------------------------------------------------------------------------------------------------------------------
+---
 
 ### 4. Configuration
 
  - Modify config.py to set base endpoints, environment settings, or other parameters as needed.
  - Sample JSON input is provided in data/sample_response.json.
--------------------------------------------------------------------------------------------------------------------
+
+---
 
 ### 5. Use Case Example
 
@@ -94,21 +97,23 @@ Planning a Sepsis Trial?
 - Outcomes: Mortality, SOFA score, length of hospital stay are most common
 
 → Use this data to benchmark your protocol against real-world studies.
--------------------------------------------------------------------------------------------------------------------
+
+---
 
 ### 6. Future Roadmap
 
  - GPT-powered clinical summary generator
  - Evidence-based trial design suggestions
  - Sponsor-type based comparative insights
--------------------------------------------------------------------------------------------------------------------
+
+---
 
 ### 7. Citation
 
 - If you use this tool for academic or professional work, please credit:
 
 → Osei, Francis. Trial Design Explorer: Real-time Benchmarking of Clinical Trials Using Registry Data. 2025.
--------------------------------------------------------------------------------------------------------------------
 
+---
 ### Contact
 Feel free to reach out via https://www.linkedin.com/in/francis-osei-b2b02116a/ for collaborations or feedback!
