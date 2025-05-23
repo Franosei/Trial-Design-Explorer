@@ -56,17 +56,18 @@ TRIAL-DESIGN-EXPLORER/
 ├── config.py
 └── README.md
 
+
+```
 ---
 
 ## Getting Started
 
 ### 1. Clone the repository
 
-```bash
+```
 git clone https://github.com/Franosei/Trial-Design-Explorer.git
 cd Trial-Design-Explorer
 
----
 
 ### 2. Install dependencies
 
