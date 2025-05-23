@@ -67,6 +67,7 @@ TRIAL-DESIGN-EXPLORER/
 
 ### Clone the repository
 
+```
 ```bash
 git clone https://github.com/Franosei/Trial-Design-Explorer.git
 cd Trial-Design-Explorer
@@ -77,21 +78,20 @@ cd Trial-Design-Explorer
 ```bash
 pip install -r requirements.txt
 
----
+
 
 ### Run the Streamlit app
 
 ```
 ```bash
 python -m streamlit run app.py
----
+
 
 ### 4. Configuration
 
  - Modify config.py to set base endpoints, environment settings, or other parameters as needed.
  - Sample JSON input is provided in data/sample_response.json.
 
----
 
 ### Use Case Example
 
@@ -103,7 +103,6 @@ Planning a Sepsis Trial?
 
 → Use this data to benchmark your protocol against real-world studies.
 
----
 
 ### Future Roadmap
 
@@ -111,7 +110,6 @@ Planning a Sepsis Trial?
  - Evidence-based trial design suggestions
  - Sponsor-type based comparative insights
 
----
 
 ### Citation
 
@@ -119,6 +117,6 @@ Planning a Sepsis Trial?
 
 → Osei, Francis. Trial Design Explorer: Real-time Benchmarking of Clinical Trials Using Registry Data. 2025.
 
----
+
 ### Contact
 Feel free to reach out via https://www.linkedin.com/in/francis-osei-b2b02116a/ for collaborations or feedback!
