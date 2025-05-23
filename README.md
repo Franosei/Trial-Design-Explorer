@@ -55,8 +55,6 @@ TRIAL-DESIGN-EXPLORER/
 ├── app.py
 ├── config.py
 └── README.md
-
-
 ```
 ---
 

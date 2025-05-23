@@ -100,7 +100,7 @@ def show_location_panel(df):
         ),
         font=dict(color="#333333", size=14),
         margin=dict(t=40, b=10, r=10, l=10),
-        height=650,
+        height=800,
         legend_title_text="Recruitment Status"
     )
 

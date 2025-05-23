@@ -48,7 +48,7 @@ def show_duration_panel(df):
     fig.update_layout(
     template="plotly",  # Theme-aware background
     margin=dict(t=60, b=40, l=100, r=30),  # Reduce l=250 if not needed
-    height=min(len(df), 1200),  # Dynamically based on bar count
+    height=min(500, 1200),  # Dynamically based on bar count
     )
 
 

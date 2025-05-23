@@ -31,7 +31,7 @@ def show_overview(df):
     fig_pie.update_layout(
     template="plotly",  # Theme-aware background
     margin=dict(t=60, b=40, l=100, r=30),  # Reduce l=250 if not needed
-    height=min(len(df), 1200),  # Dynamically based on bar count
+    height=min(500, 1200),  # Dynamically based on bar count
     showlegend=True
     )
     st.plotly_chart(fig_pie, use_container_width=True, key=f"study_type_pie_{unique_id}")
@@ -54,7 +54,7 @@ def show_overview(df):
     fig2.update_layout(
     template="plotly",  # Theme-aware background
     margin=dict(t=60, b=40, l=100, r=30),  # Reduce l=250 if not needed
-    height=min(len(df), 1200),  # Dynamically based on bar count
+    height=min(500, 1200),  # Dynamically based on bar count
     showlegend=True
     )
     
@@ -76,7 +76,7 @@ def show_overview(df):
         )
         fig_status.update_layout(
             template="plotly", 
-            height=min(len(df), 1200),
+            height=min(500, 1200),
             margin=dict(t=60, b=40, l=100, r=30),
             legend_title="Status",
             showlegend=True
