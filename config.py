@@ -1,3 +1,3 @@
-BASE_API_URL = "https://clinicaltrials.gov/api/v2/studies"
-DEFAULT_CONDITION = "Sepsis"
-DEFAULT_PAGE_SIZE = 1000
+from trial_design_explorer.config import BASE_API_URL, DEFAULT_CONDITION, DEFAULT_PAGE_SIZE
+
+__all__ = ["BASE_API_URL", "DEFAULT_CONDITION", "DEFAULT_PAGE_SIZE"]
