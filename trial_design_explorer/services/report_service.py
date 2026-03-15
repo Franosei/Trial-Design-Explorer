@@ -222,6 +222,57 @@ def _summary_box(lines: list[str], styles) -> Table:
     return table
 
 
+def _humanize_token(value: str | None) -> str:
+    if not value:
+        return "Not provided"
+    return str(value).replace("_", " ").strip().title()
+
+
+def _format_audit_timestamp(value: str | None) -> str:
+    if not value:
+        return "Timestamp unavailable"
+    parsed = pd.to_datetime(value, errors="coerce", utc=True)
+    if pd.isna(parsed):
+        return str(value)
+    return parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _audit_event_card(item: dict, styles) -> Table:
+    action_label = _humanize_token(item.get("action"))
+    title = f"{_format_audit_timestamp(item.get('timestamp'))} | {action_label}"
+
+    meta_parts = [f"Actor: {_humanize_token(item.get('actor'))}"]
+    if item.get("artifact_type"):
+        meta_parts.append(f"Artifact: {_humanize_token(item.get('artifact_type'))}")
+    if item.get("artifact_id"):
+        meta_parts.append(f"ID: {item.get('artifact_id')}")
+    metadata = item.get("metadata") or {}
+    if metadata:
+        metadata_text = ", ".join(f"{key}: {value}" for key, value in metadata.items())
+        meta_parts.append(f"Metadata: {metadata_text}")
+
+    rows = [
+        [_paragraph(f"<b>{title}</b>", styles["body"])],
+        [_paragraph(" | ".join(meta_parts), styles["small"])],
+        [_paragraph(item.get("details", "No details recorded."), styles["body"])],
+    ]
+    table = Table(rows, colWidths=[16.0 * cm], hAlign="LEFT")
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), SOFT_FILL),
+                ("BOX", (0, 0), (-1, -1), 0.6, BORDER_COLOR),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.4, BORDER_COLOR),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    return table
+
+
 def _chart_title(text: str, width: float) -> Table:
     table = Table([[text]], colWidths=[width])
     table.setStyle(
@@ -631,21 +682,12 @@ def generate_protocol_report_pdf(
 
     story.append(PageBreak())
     story.extend(_section_heading("14. Audit Trail and Provenance", styles))
-    audit_rows = []
-    for item in audit_log:
-        audit_rows.append(
-            {
-                "Timestamp": item.get("timestamp", "n/a"),
-                "Actor": item.get("actor", "system"),
-                "Action": item.get("action", ""),
-                "Details": item.get("details", ""),
-            }
-        )
-    audit_df = pd.DataFrame(audit_rows)
-    if audit_df.empty:
+    if not audit_log:
         story.append(_paragraph("No audit events were recorded.", styles["body"]))
     else:
-        story.append(_dataframe_table(audit_df, styles, col_widths=[3.2 * cm, 2.0 * cm, 3.0 * cm, 7.8 * cm], style_key="dense", compact=True))
+        for event in audit_log:
+            story.append(_audit_event_card(event, styles))
+            story.append(Spacer(1, 0.12 * cm))
 
     story.append(Spacer(1, 0.3 * cm))
     story.extend(_section_heading("15. Methodology Notes", styles))
