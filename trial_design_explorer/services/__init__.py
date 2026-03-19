@@ -19,9 +19,12 @@ from .protocol_service import (
     grounded_assistant_response,
     protocol_metadata_from_session,
 )
+from .pubmed_service import search_pubmed_evidence, articles_to_evidence_rows
 from .report_service import generate_protocol_report_pdf
+from .slides_service import generate_slides_pptx
 
 __all__ = [
+    "articles_to_evidence_rows",
     "build_audit_event",
     "build_action_register",
     "build_cohort_definition_table",
@@ -37,9 +40,11 @@ __all__ = [
     "extract_text_from_uploaded_file",
     "fetch_trials_by_condition",
     "generate_protocol_report_pdf",
+    "generate_slides_pptx",
     "grounded_assistant_response",
     "metrics_to_dataframe",
     "parse_trials_to_df",
     "protocol_metadata_from_session",
     "recommendations_to_dataframe",
+    "search_pubmed_evidence",
 ]

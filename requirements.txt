@@ -9,3 +9,5 @@ reportlab
 PyPDF2
 python-docx
 striprtf
+python-pptx
+matplotlib

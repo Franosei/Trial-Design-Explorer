@@ -4,6 +4,7 @@ BASE_API_URL = "https://clinicaltrials.gov/api/v2/studies"
 DEFAULT_CONDITION = "Sepsis"
 DEFAULT_PAGE_SIZE = 1000
 DEFAULT_REPORT_FILE = "trial_protocol_report.pdf"
+DEFAULT_SLIDES_FILE = "trial_protocol_slides.pptx"
 
 APP_TITLE = "Trial Design Explorer"
 APP_SUBTITLE = (

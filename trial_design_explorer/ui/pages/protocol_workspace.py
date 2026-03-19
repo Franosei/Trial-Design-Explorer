@@ -1,8 +1,9 @@
 import pandas as pd
 import streamlit as st
 
-from trial_design_explorer.config import DEFAULT_CONDITION, DEFAULT_REPORT_FILE
+from trial_design_explorer.config import DEFAULT_CONDITION, DEFAULT_REPORT_FILE, DEFAULT_SLIDES_FILE
 from trial_design_explorer.services import (
+    articles_to_evidence_rows,
     build_audit_event,
     build_action_register,
     build_cohort_definition_table,
@@ -15,11 +16,13 @@ from trial_design_explorer.services import (
     extract_text_from_uploaded_file,
     fetch_trials_by_condition,
     generate_protocol_report_pdf,
+    generate_slides_pptx,
     grounded_assistant_response,
     metrics_to_dataframe,
     parse_trials_to_df,
     protocol_metadata_from_session,
     recommendations_to_dataframe,
+    search_pubmed_evidence,
 )
 from trial_design_explorer.services.audit_service import current_utc_timestamp
 from trial_design_explorer.ui.panels.protocol_benchmarks import render_protocol_benchmark_panel
@@ -57,6 +60,7 @@ def _reset_protocol_downstream_state():
     st.session_state["comparison_metrics"] = {}
     st.session_state["comparison_recommendations"] = []
     st.session_state["chat_history"] = []
+    st.session_state["pubmed_articles"] = []
 
 
 def _set_protocol_stage(stage: str) -> None:
@@ -115,6 +119,28 @@ def _build_comparable_cohort(protocol_meta):
     )
 
 
+def _fetch_pubmed_evidence(protocol_meta):
+    """Fetch PubMed articles for the protocol's condition and endpoint focus."""
+    condition = protocol_meta.condition or DEFAULT_CONDITION
+    endpoint_focus = protocol_meta.endpoint_focus or None
+    articles = search_pubmed_evidence(
+        condition=condition,
+        endpoint_focus=endpoint_focus,
+        max_results=8,
+    )
+    st.session_state["pubmed_articles"] = [a.to_dict() for a in articles]
+    st.session_state["audit_log"].append(
+        build_audit_event(
+            "fetch_pubmed_evidence",
+            f"Retrieved {len(articles)} PubMed articles for '{condition}'.",
+            artifact_type="literature_evidence",
+            artifact_id=condition,
+            metadata={"article_count": len(articles), "endpoint_focus": endpoint_focus or "any"},
+        )
+    )
+    return articles
+
+
 def _select_index(options: list[str], value: str | None) -> int:
     if value in options:
         return options.index(value)
@@ -155,6 +181,7 @@ def render_protocol_sidebar():
     st.caption(f"Profile: {protocol_meta.confirmation_status.title() if protocol_meta else 'Not started'}")
     st.caption(f"Cohort size: {len(matching_trials) if matching_trials is not None else 0}")
     st.caption(f"Recommendations: {len(st.session_state.get('comparison_recommendations', []))}")
+    st.caption(f"PubMed articles: {len(st.session_state.get('pubmed_articles', []))}")
     if protocol_meta and protocol_meta.condition:
         st.caption(f"Condition: {protocol_meta.condition}")
 
@@ -167,11 +194,12 @@ def render_protocol_workspace():
     st.markdown("### Protocol Review Workspace")
     stage = _render_stage_selector()
 
-    headline_col1, headline_col2, headline_col3 = st.columns([1, 1, 2])
+    headline_col1, headline_col2, headline_col3, headline_col4 = st.columns([1, 1, 1, 2])
     headline_col1.metric("Profile Status", protocol_meta.confirmation_status.title() if protocol_meta else "Not started")
     headline_col2.metric("Comparable Studies", len(matching_trials) if matching_trials is not None else 0)
-    headline_col3.caption(
-        "This workspace is designed for document intake, structured protocol review, cohort benchmarking, recommendation review, and formal reporting."
+    headline_col3.metric("PubMed Articles", len(st.session_state.get("pubmed_articles", [])))
+    headline_col4.caption(
+        "Document intake → structured review → registry benchmarking → literature evidence → report export."
     )
 
     if stage == "Intake":
@@ -339,12 +367,24 @@ def _render_analysis_stage():
         return
 
     protocol_meta = protocol_metadata_from_session(st.session_state["protocol_meta"])
-    action_col, status_col = st.columns([1.2, 1])
+
+    # ── Action row ────────────────────────────────────────────────────────────
+    action_col, pubmed_col, status_col = st.columns([1.2, 1.2, 1])
     with action_col:
         label = protocol_meta.condition or DEFAULT_CONDITION
         if st.button(f"Build or refresh cohort for {label}", type="primary", width="stretch"):
             with st.spinner("Building comparison cohort and benchmark outputs..."):
                 _build_comparable_cohort(protocol_meta)
+            st.rerun()
+    with pubmed_col:
+        pubmed_label = f"Fetch PubMed evidence for {protocol_meta.condition or DEFAULT_CONDITION}"
+        if st.button(pubmed_label, width="stretch"):
+            with st.spinner("Searching PubMed for peer-reviewed evidence..."):
+                articles = _fetch_pubmed_evidence(protocol_meta)
+            if articles:
+                st.success(f"Retrieved {len(articles)} PubMed article(s).")
+            else:
+                st.warning("No PubMed articles found. Check the condition name or try again.")
             st.rerun()
     with status_col:
         st.caption("Analysis uses the reviewed protocol profile as the source of truth for cohort benchmarking.")
@@ -397,6 +437,33 @@ def _render_analysis_stage():
         st.markdown("##### Comparator Exemplars")
         st.dataframe(_safe_dataframe(build_trial_exemplar_table(matching_trials, limit=10)), width="stretch", hide_index=True, height=360)
 
+    # ── PubMed evidence panel ─────────────────────────────────────────────────
+    pubmed_articles = st.session_state.get("pubmed_articles", [])
+    if pubmed_articles:
+        st.markdown("##### PubMed Literature Evidence")
+        st.caption(
+            f"{len(pubmed_articles)} peer-reviewed article(s) retrieved from PubMed. "
+            "All citations are traceable to NCBI via PMID."
+        )
+        evidence_rows = articles_to_evidence_rows([
+            type("A", (), a)() if not hasattr(a, "to_dict") else a
+            for a in pubmed_articles
+        ])
+        # Convert dict list to df
+        pub_display = pd.DataFrame(pubmed_articles)[
+            [c for c in ["pmid", "title", "authors", "journal", "year", "url"] if c in pd.DataFrame(pubmed_articles).columns]
+        ]
+        pub_display.columns = [c.upper() if c == "pmid" else c.title() for c in pub_display.columns]
+        st.dataframe(_safe_dataframe(pub_display), width="stretch", hide_index=True)
+
+        with st.expander("View abstract excerpts"):
+            for art in pubmed_articles[:4]:
+                st.markdown(f"**{art.get('title', '')}**")
+                st.caption(f"PMID: {art.get('pmid', '')} | {art.get('authors', '')} | {art.get('journal', '')} ({art.get('year', '')})")
+                if art.get("abstract"):
+                    st.write(art["abstract"])
+                st.markdown("---")
+
     st.markdown("##### Interactive Review Assistant")
     chat_col, next_col = st.columns([1.6, 1])
     with chat_col:
@@ -432,47 +499,96 @@ def _render_report_stage():
         return
 
     protocol_meta = protocol_metadata_from_session(st.session_state["protocol_meta"])
+    pubmed_articles = st.session_state.get("pubmed_articles", [])
+
     report_col, audit_col = st.columns([1, 1.1])
     with report_col:
         st.markdown("##### Export Package")
         report_sections = [
-            ("Executive decision summary", "Included"),
-            ("Success vs disruption posture", "Included"),
-            ("Action register", "Included"),
-            ("Design differential matrix", "Included"),
-            ("Comparator cohort definition", "Included"),
-            ("Comparator exemplars", "Included"),
-            ("Audit trail and methodology", "Included"),
+            ("Executive decision summary + narrative",    "Included"),
+            ("Precedent posture gauge chart",             "Included"),
+            ("Design domain alignment (radar chart)",     "Included"),
+            ("Alignment heatmap",                         "Included"),
+            ("Enrollment benchmark (box plot)",           "Included"),
+            ("Duration comparison chart",                 "Included"),
+            ("Design differential matrix",                "Included"),
+            ("Success vs disruption benchmark",           "Included"),
+            ("Endpoint evidence (chart + table)",         "Included"),
+            ("PubMed literature evidence",                f"{len(pubmed_articles)} article(s)" if pubmed_articles else "Not fetched"),
+            ("Comparator exemplars",                      "Included"),
+            ("Action register",                           "Included"),
+            ("Audit trail and methodology",               "Included"),
         ]
         st.dataframe(_safe_dataframe(pd.DataFrame(report_sections, columns=["Section", "Status"])), width="stretch", hide_index=True)
-        if st.button("Generate professional PDF report", type="primary", width="stretch"):
-            output_file = DEFAULT_REPORT_FILE
-            export_event = build_audit_event(
-                "export_pdf_report",
-                f"Generated {output_file}.",
-                artifact_type="report",
-                artifact_id=output_file,
-            )
-            st.session_state["audit_log"].append(export_event)
-            generate_protocol_report_pdf(
-                output_file,
-                protocol_meta,
-                st.session_state.get("latest_comparison", "No comparison analysis is available."),
-                st.session_state.get("audit_log", []),
-                st.session_state.get("matching_trials"),
-                st.session_state.get("chat_history", []),
-                st.session_state.get("comparison_metrics", {}),
-                st.session_state.get("comparison_recommendations", []),
-            )
-            with open(output_file, "rb") as report_file:
-                report_bytes = report_file.read()
-            st.download_button(
-                "Download PDF report",
-                data=report_bytes,
-                file_name=output_file,
-                mime="application/pdf",
-                width="stretch",
-            )
+
+        if not pubmed_articles:
+            st.info("Tip: fetch PubMed evidence in the Analysis stage to include literature citations in the report.")
+
+        # ── PDF export ────────────────────────────────────────────────────────
+        if st.button("Generate PDF report", type="primary", width="stretch"):
+            with st.spinner("Generating detailed PDF report with charts and evidence..."):
+                output_file = DEFAULT_REPORT_FILE
+                st.session_state["audit_log"].append(
+                    build_audit_event(
+                        "export_pdf_report",
+                        f"Generated {output_file}.",
+                        artifact_type="report",
+                        artifact_id=output_file,
+                        metadata={"pubmed_articles": len(pubmed_articles)},
+                    )
+                )
+                generate_protocol_report_pdf(
+                    output_file,
+                    protocol_meta,
+                    st.session_state.get("latest_comparison", ""),
+                    st.session_state.get("audit_log", []),
+                    st.session_state.get("matching_trials"),
+                    st.session_state.get("chat_history", []),
+                    st.session_state.get("comparison_metrics", {}),
+                    st.session_state.get("comparison_recommendations", []),
+                    pubmed_articles=pubmed_articles,
+                )
+            with open(output_file, "rb") as f:
+                st.download_button(
+                    "Download PDF report",
+                    data=f.read(),
+                    file_name=output_file,
+                    mime="application/pdf",
+                    width="stretch",
+                )
+
+        # ── PowerPoint export ─────────────────────────────────────────────────
+        st.markdown("---")
+        if st.button("Generate PowerPoint slides", width="stretch"):
+            with st.spinner("Building presentation deck with charts and evidence slides..."):
+                slides_file = DEFAULT_SLIDES_FILE
+                st.session_state["audit_log"].append(
+                    build_audit_event(
+                        "export_pptx_slides",
+                        f"Generated {slides_file}.",
+                        artifact_type="slides",
+                        artifact_id=slides_file,
+                        metadata={"pubmed_articles": len(pubmed_articles)},
+                    )
+                )
+                generate_slides_pptx(
+                    slides_file,
+                    protocol_meta,
+                    st.session_state.get("comparison_metrics", {}),
+                    st.session_state.get("comparison_recommendations", []),
+                    st.session_state.get("audit_log", []),
+                    st.session_state.get("matching_trials"),
+                    pubmed_articles=pubmed_articles,
+                )
+            with open(slides_file, "rb") as f:
+                st.download_button(
+                    "Download PowerPoint slides",
+                    data=f.read(),
+                    file_name=slides_file,
+                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    width="stretch",
+                )
+
     with audit_col:
         st.markdown("##### Cohort and Audit Preview")
         st.dataframe(
@@ -481,5 +597,14 @@ def _render_report_stage():
             hide_index=True,
             height=180,
         )
+        st.markdown("##### PubMed Evidence Summary")
+        if pubmed_articles:
+            pub_summary = pd.DataFrame([
+                {"PMID": a.get("pmid", ""), "Title": a.get("title", "")[:60], "Year": a.get("year", "")}
+                for a in pubmed_articles[:6]
+            ])
+            st.dataframe(_safe_dataframe(pub_summary), width="stretch", hide_index=True)
+        else:
+            st.caption("No PubMed articles fetched yet.")
         st.markdown("##### Audit Trail")
-        st.dataframe(_safe_dataframe(pd.DataFrame(st.session_state.get("audit_log", []))), width="stretch", height=220)
+        st.dataframe(_safe_dataframe(pd.DataFrame(st.session_state.get("audit_log", []))), width="stretch", height=180)
