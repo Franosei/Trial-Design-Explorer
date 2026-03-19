@@ -8,9 +8,13 @@ SESSION_DEFAULTS = {
     "latest_comparison": "",
     "comparison_metrics": {},
     "comparison_recommendations": [],
+    # Typed ComparisonResult stored as serialised dict for session persistence.
+    # Access via: ComparisonResult-aware code reads this and re-inflates if needed.
+    "comparison_result": None,
     "protocol_stage": "Intake",
     "audit_log": [],
     "chat_history": [],
+    "pubmed_articles": [],
 }
 
 

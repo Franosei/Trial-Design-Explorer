@@ -1,119 +1,179 @@
 # Trial Design Explorer
 
-Protocol-first clinical trial planning intelligence for pharma and CRO teams.
+Clinical trial planning intelligence for pharma, biotech, and CRO teams.
 
-The application combines protocol intake, structured extraction, historical trial benchmarking, traceable review, and professional PDF reporting in a single Streamlit workspace. It is designed to support high-stakes planning discussions, not just exploratory visualization.
+Upload a draft protocol/synposium/trial document, extract a structured clinical profile using an LLM, and immediately see how your design compares against a scored cohort of historical trials from ClinicalTrials.gov, with domain-level risk findings, enrollment and duration benchmarks, a priority-coded action register, and a boardroom-ready PDF and PowerPoint export.
 
-## What The App Does
+---
 
-- upload protocol or study documents
-- extract a structured protocol profile with heuristics and optional LLM support
-- let reviewers confirm and edit extracted fields before analysis
-- build comparable cohorts from ClinicalTrials.gov
-- compare the draft protocol against completed and disrupted precedent
-- generate decision-grade benchmark tables, charts, and action signals
-- support grounded review chat with audit history
-- export a formal PDF report with tables, figures, and provenance-oriented sections
+## What It Does
 
-## Current Product Shape
+A trial planner uploads a draft protocolprotocol document (PDF, DOCX, TXT, or RTF). The system:
 
-The app has two workspaces:
+1. **Extracts a structured clinical profile** using a multi-pass LLM extraction architecture — title, condition, phase, allocation, masking, intervention model, primary purpose, planned enrollment, arms count, dates, primary and secondary endpoints (verbatim), target population and full eligibility criteria (verbatim), intervention description, and comparator.
 
-- `Protocol Intelligence`
-  The main workspace for document intake, protocol review, benchmark analysis, recommendations, chat, and report export.
+2. **Lets the reviewer confirm and correct** every extracted field before any analysis runs. Provenance of the extraction is recorded.
 
-- `Registry Explorer`
-  A secondary workspace for cohort discovery and broader historical benchmark context.
+3. **Builds a design-similar trial cohort** from ClinicalTrials.gov using a five-domain PICO similarity model (Population, Design, Endpoints, Intervention, Duration). Sponsor is intentionally excluded from scoring. Each trial is scored 0–1 and classified as Clinically Comparable, Methodologically Aligned, or Not Directly Comparable.
 
-The protocol workflow is staged for easier navigation:
+4. **Runs domain-level landscape intelligence** — for each design domain, shows the match rate in completed trials versus terminated/disrupted trials, flags where the protocol's choices are more common in failed trials, and quantifies the precedent gap.
 
-1. `Intake`
-2. `Review`
-3. `Analysis`
-4. `Report`
+5. **Benchmarks enrollment and duration** — compares planned N and trial length against the IQR of completed and disrupted comparator trials, with explicit in-range / out-of-range callouts.
 
-## Current Decision Logic
+6. **Generates a priority-coded risk register** — High, Medium, Monitor, and Preserve findings grounded in the comparator data, with rationale and evidence for each item.
 
-The analysis layer is not generic cohort summary. It focuses on planning signals that are more useful in real review settings:
+7. **Exports a formal report package** — multi-section PDF with charts and a PowerPoint slide deck for governance and review meetings.
 
-- completed vs disrupted comparator cohorts
-- protocol fit against completed precedent
-- protocol fit against disrupted precedent
-- success-vs-disruption benchmark tables
-- design differential matrix by domain
-- executive action register
-- comparator exemplar selection
-- traceable decision signals for reporting
+---
 
-This gives reviewers a more concrete answer to questions like:
+## Protocol Extraction Architecture
 
-- where does this draft align with completed precedent?
-- where does it resemble disrupted precedent?
-- what should be clarified before governance review?
-- which design choices should be preserved versus challenged?
+Extraction is LLM-first. No regex or heuristics are used to assign field values.
 
-## Reporting Standard
+For documents under 50,000 characters, a single comprehensive LLM pass on the full text extracts all fields.
 
-The PDF export is built as a decision pack rather than a UI dump. Current report sections include:
+For longer documents (100-page protocols), four keyword-anchored passes are used:
 
-- executive summary
-- senior decision signals
-- executive action register
-- reviewed protocol profile
-- comparative narrative
-- comparator cohort definition
-- success-vs-disruption benchmark
-- decision scorecard
-- design differential matrix
-- key figures
-- recommendation detail
-- comparator exemplars
-- audit trail and methodology
+| Pass | Content target | Anchor strategy |
+|------|----------------|-----------------|
+| 1 | Title, sponsor, design header | First 15k chars + synopsis window |
+| 2 | Primary and secondary endpoints | Anchored from char 25,000+ to skip glossary false matches |
+| 3 | Eligibility criteria | Anchored from char 25,000+ to skip summary-of-changes table |
+| 4 | Intervention, dose, comparator | Anchored from char 25,000+ to skip title-page header |
+
+The 25,000-character minimum offset prevents common false matches where terms like "primary outcome measure", "study intervention", and "inclusion criteria" appear in document glossaries, amendment tables, and title pages before the actual content sections.
+
+Field values are copied verbatim from the document. The LLM is instructed not to paraphrase or invent. Extraction confidence (High / Medium / Low) is scored from required field coverage.
+
+When no OpenAI API key is configured, only structural fields derivable from document patterns (phase, allocation, masking) are extracted. All rich text fields are left empty and a clear configuration prompt is shown.
+
+---
+
+## Design Similarity Model
+
+Trials are scored against the protocol across five clinical domains that determine whether two studies are truly comparable — matching the strictness required for regulatory external control arms, systematic reviews, and indirect treatment comparisons.
+
+| Domain | Weight | Key dimensions |
+|--------|--------|----------------|
+| Population | 5 | Disease indication (keyword overlap), age range (numeric overlap %), line of therapy (1L vs 2L+) |
+| Design | 5 | Study type, allocation (RCT vs non-RCT), masking, intervention model |
+| Endpoints | 5 | Primary endpoint text (Jaccard token similarity), phase context |
+| Intervention | 4 | Drug/device class, comparator structure (single-arm vs placebo vs active) |
+| Duration | 3 | Treatment duration and follow-up window |
+
+**Similarity thresholds:**
+
+| Score | Classification | Interpretation |
+|-------|---------------|----------------|
+| ≥ 0.70 | Clinically comparable | Suitable for external control / ITC without adjustment |
+| 0.45–0.70 | Methodologically aligned | Minor differences; requires statistical adjustment |
+| < 0.45 | Not directly comparable | Major differences; similarity claim is not defensible |
+
+Sponsor is excluded from all scoring dimensions by design.
+
+---
+
+## Analysis Stage
+
+The Analysis stage is structured around decisions, not summaries.
+
+**Trial Landscape Brief** — headline counts (matched, completed, terminated, active), evidence strength, design posture badge, completion rate narrative, and design-fit progress bars showing alignment with each precedent group.
+
+**Domain Intelligence (tabbed)** — one tab per domain. Each tab shows the protocol's design choice, the percentage of completed trials that used that choice, the percentage of terminated trials that used it, and a green/amber/red gap signal.
+
+**Enrollment & Duration Benchmarks** — protocol target vs completed-trial IQR with explicit in-range / above-range / below-range callouts and percentile rank.
+
+**Risk Register** — priority-coded bordered cards (not a table). High-priority items are design choices that are statistically more common in terminated than completed trials.
+
+**Comparator Exemplars** — top 20 trials ranked by similarity score, with status badges, phase, masking, enrollment, and similarity classification.
+
+**AI Review Assistant** — grounded chat using protocol metadata, benchmark metrics, and recommendations as context. Does not fabricate evidence.
+
+---
+
+## Report Package
+
+### PDF
+
+Multi-section clinical review document:
+
+1. Cover page with protocol identity and generation timestamp
+2. Executive summary with narrative and KPI table
+3. Senior decision signals
+4. Executive action register
+5. Reviewed protocol profile (structured fields table + verbatim long-text blocks)
+6. Precedent posture analysis with narrative
+7. Design domain alignment with radar chart and heatmap
+8. Design differential matrix
+9. Enrollment benchmark with box-plot chart
+10. Duration comparison chart
+11. Comparator cohort definition
+12. Success vs disruption benchmark
+13. Endpoint evidence
+14. PubMed literature evidence (if fetched)
+15. Comparator exemplars
+16. Recommendation detail
+17. Audit trail and methodology
+
+### PowerPoint
+
+Slide deck for governance and review meetings — one slide per analytical section with embedded charts, auto-numbered footers showing true slide count.
+
+---
+
+## Workspaces
+
+**Protocol Intelligence** (primary)
+Document intake → structured review → landscape analysis → risk register → report export.
+
+**Registry Explorer** (secondary)
+Condition-level cohort discovery, overview analytics, location maps, duration distributions, outcome trends, sponsor analysis, and timeline charts. Useful for building benchmark context before drafting a protocol.
+
+---
 
 ## Repository Structure
 
-```text
-TRIAL-DESIGN-EXPLORER/
-|-- app.py
-|-- assets/
-|-- data/
-|-- docs/
-|   `-- platform_blueprint.md
-|-- trial_design_explorer/
-|   |-- config.py
-|   |-- state.py
-|   |-- domain/
-|   |   |-- __init__.py
-|   |   `-- models.py
-|   |-- services/
-|   |   |-- __init__.py
-|   |   |-- audit_service.py
-|   |   |-- clinical_trials_service.py
-|   |   |-- comparison_service.py
-|   |   |-- document_service.py
-|   |   |-- openai_service.py
-|   |   |-- protocol_service.py
-|   |   `-- report_service.py
-|   `-- ui/
-|       |-- __init__.py
-|       |-- app_shell.py
-|       |-- styles.py
-|       |-- pages/
-|       |   |-- __init__.py
-|       |   |-- protocol_workspace.py
-|       |   `-- registry_explorer.py
-|       `-- panels/
-|           |-- __init__.py
-|           |-- duration.py
-|           |-- location.py
-|           |-- outcome.py
-|           |-- overview.py
-|           |-- protocol_benchmarks.py
-|           |-- sponsor.py
-|           |-- summary.py
-|           `-- timeline.py
-`-- requirements.txt
 ```
+trial-design-explorer/
+├── app.py                                  # Streamlit entrypoint — loads .env at module level
+├── .env                                    # OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
+├── requirements.txt
+├── assets/
+├── data/
+├── trial_design_explorer/
+│   ├── config.py                           # Constants, condition list, field registry
+│   ├── state.py                            # Session state initialisation
+│   ├── domain/
+│   │   └── models.py                       # ProtocolMetadata, ComparisonResult, domain types
+│   └── services/
+│   │   ├── audit_service.py                # Audit event builder, provenance records
+│   │   ├── chart_service.py                # Matplotlib chart generators (BytesIO)
+│   │   ├── clinical_trials_service.py      # CT.gov fetch, parse, PICO similarity scoring
+│   │   ├── comparison_service.py           # Cohort metrics, domain alignment, recommendations
+│   │   ├── document_service.py             # PDF/DOCX/RTF text extraction
+│   │   ├── openai_service.py               # OpenAI API wrapper, has_openai_config()
+│   │   ├── protocol_service.py             # LLM extraction, multi-pass, grounded chat
+│   │   ├── pubmed_service.py               # PubMed article fetch and parsing
+│   │   ├── report_service.py               # ReportLab PDF generation
+│   │   └── slides_service.py               # python-pptx slide deck generation
+│   └── ui/
+│       ├── app_shell.py                    # App layout, workspace switcher
+│       ├── styles.py                       # CSS theme
+│       ├── pages/
+│       │   ├── protocol_workspace.py       # 4-stage protocol workflow
+│       │   └── registry_explorer.py        # Registry cohort explorer
+│       └── panels/
+│           ├── protocol_benchmarks.py      # Plotly benchmark charts
+│           ├── overview.py
+│           ├── duration.py
+│           ├── location.py
+│           ├── outcome.py
+│           ├── sponsor.py
+│           ├── summary.py
+│           └── timeline.py
+```
+
+---
 
 ## Getting Started
 
@@ -123,71 +183,58 @@ TRIAL-DESIGN-EXPLORER/
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment
+### 2. Configure the OpenAI API key
 
-Create a local `.env` file if you want model-assisted extraction and grounded review chat.
+Edit `.env` in the project root:
 
-Supported variables:
-
-- `OPENAI_API_KEY`
-- `OPENAI_BASE_URL`
-- `OPENAI_MODEL`
-
-If no model configuration is present, the app falls back to heuristic extraction and deterministic comparison outputs.
-
-### 3. Run the app
-
-```bash
-py -3 -m streamlit run app.py
+```env
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
-## Key Files
+The app will show a clear error on the Intake stage if no key is configured. Without a key, only structural fields (phase, allocation, masking) can be extracted from uploaded documents.
 
-- [app.py](/c:/Users/oseif/OneDrive/Desktop/Trial-Design-Explorer/app.py)
-  Thin Streamlit entrypoint.
+### 3. Run
 
-- [trial_design_explorer/ui/app_shell.py](/c:/Users/oseif/OneDrive/Desktop/Trial-Design-Explorer/trial_design_explorer/ui/app_shell.py)
-  App shell, workspace switcher, and top-level layout.
+```bash
+streamlit run app.py
+```
 
-- [trial_design_explorer/ui/pages/protocol_workspace.py](/c:/Users/oseif/OneDrive/Desktop/Trial-Design-Explorer/trial_design_explorer/ui/pages/protocol_workspace.py)
-  Protocol-first review workflow.
+---
 
-- [trial_design_explorer/services/protocol_service.py](/c:/Users/oseif/OneDrive/Desktop/Trial-Design-Explorer/trial_design_explorer/services/protocol_service.py)
-  Protocol extraction, session hydration, and grounded chat preparation.
+## Design Principles
 
-- [trial_design_explorer/services/comparison_service.py](/c:/Users/oseif/OneDrive/Desktop/Trial-Design-Explorer/trial_design_explorer/services/comparison_service.py)
-  Comparator cohort logic, completed-vs-disrupted benchmarking, and recommendations.
+**LLM for content, structure for signals.**
+Field values are always extracted by the LLM. Regex is used only to validate controlled-vocabulary fields (phase format, status normalization) — never to assign content.
 
-- [trial_design_explorer/services/report_service.py](/c:/Users/oseif/OneDrive/Desktop/Trial-Design-Explorer/trial_design_explorer/services/report_service.py)
-  Boardroom-style PDF generation.
+**Reviewer in the loop.**
+No analysis runs until a reviewer has confirmed or corrected the extracted profile. Extraction confidence and provenance are visible at every stage.
 
-## Trust, Review, And Auditability
+**Sponsor-blind similarity.**
+The comparator cohort selection model does not use sponsor identity. This prevents circular reasoning (comparing your Pfizer trial only against other Pfizer trials) and keeps the benchmark methodologically defensible.
 
-The repo is being shaped around higher-trust review standards:
+**Grounded outputs.**
+Recommendations and risk findings are derived from the comparator cohort data — not from templates or generic rules. Each finding cites the completed vs disrupted match rates that drive it.
 
-- reviewer confirmation before protocol fields are treated as approved
-- explicit visibility into audit events
-- provenance-aware extraction objects in the domain model
-- recommendation outputs grounded in matched comparator data
-- no requirement for an LLM to use the core benchmarking workflow
+**Paginate, don't truncate.**
+Long clinical text (eligibility criteria, endpoint descriptions) renders as flowing prose in the PDF, not as table cells, so no content is lost and ReportLab does not overflow.
+
+---
 
 ## Current Limitations
 
-The application is much stronger than the original prototype, but there are still major upgrades ahead:
+- Comparator matching uses PICO-domain scoring against ClinicalTrials.gov registry data. Results data (whether a trial actually met its primary endpoint) is not incorporated — completion status is used as a proxy for success.
+- Recommendations are grounded in design-domain precedent patterns, not in therapeutic-area-specific clinical expertise.
+- No persistent project storage — session state is lost on app restart.
+- The Registry Explorer workspace does not yet integrate with the Protocol Intelligence scoring model.
 
-- comparator matching is still condition-led rather than true semantic similarity ranking
-- recommendations are benchmark-driven and not yet deeply therapeutic-area-specific
-- project persistence and long-term audit storage are not finished
-- the reporting engine is strong enough for review drafts, but it can still be pushed further toward full consulting-grade templating
+---
 
-## Near-Term Roadmap
+## Roadmap
 
-- true similarity ranking for comparator selection
-- deeper therapeutic-area logic
-- richer evidence and provenance panels
-- saved projects and run history
-- stronger enterprise approval workflow
-
-## Platform Blueprint
-
-See [docs/platform_blueprint.md](/c:/Users/oseif/OneDrive/Desktop/Trial-Design-Explorer/docs/platform_blueprint.md) for the platform direction and phased implementation plan.
+- Results-data integration (met/missed primary endpoint signal from CT.gov results API)
+- Therapeutic-area-specific recommendation modules
+- Persistent project storage and run history
+- Approval workflow and sign-off audit trail
+- Multi-protocol comparison (compare two drafts against the same comparator cohort)

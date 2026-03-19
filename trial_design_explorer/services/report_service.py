@@ -159,8 +159,12 @@ def _subsection(title: str, styles) -> list:
 def _kv_table(rows: list[tuple[str, str]], styles) -> Table:
     data = [[_p("<b>Field</b>", styles["body"]), _p("<b>Value</b>", styles["body"])]]
     for label, value in rows:
-        data.append([_p(str(label), styles["body"]), _p(str(value), styles["body"])])
-    tbl = Table(data, colWidths=[5.0 * cm, 11.5 * cm], hAlign="LEFT")
+        # Truncate any unexpectedly long value so a single cell never exceeds page height
+        v = str(value)
+        if len(v) > 400:
+            v = v[:397] + "…"
+        data.append([_p(str(label), styles["body"]), _p(v, styles["body"])])
+    tbl = Table(data, colWidths=[5.0 * cm, 11.5 * cm], hAlign="LEFT", splitByRow=1)
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), SOFT_FILL),
         ("TEXTCOLOR", (0, 0), (-1, 0), HEADER_COLOR),
@@ -669,8 +673,9 @@ def generate_protocol_report_pdf(
         f"Profile status: <b>{protocol.confirmation_status.title()}</b>.",
         styles["body"]))
     story.append(Spacer(1, 0.15 * cm))
-    profile_rows = [
-        ("Title",                protocol.title or "Not provided"),
+
+    # Compact structured fields go in a table (short single-line values only)
+    compact_rows = [
         ("Condition",            protocol.condition or "Not provided"),
         ("Sponsor",              protocol.sponsor or "Not provided"),
         ("Study Type",           protocol.study_type or "Not provided"),
@@ -681,17 +686,35 @@ def generate_protocol_report_pdf(
         ("Masking",              protocol.masking or "Not provided"),
         ("Intervention Model",   protocol.intervention_model or "Not provided"),
         ("Primary Purpose",      protocol.primary_purpose or "Not provided"),
-        ("Comparator",           protocol.comparator or "Not provided"),
-        ("Target Population",    protocol.target_population or "Not provided"),
         ("Geography Focus",      protocol.geography_focus or "Not provided"),
         ("Start Date",           protocol.start_date or "Not provided"),
         ("Completion Date",      protocol.completion_date or "Not provided"),
         ("Endpoint Focus",       protocol.endpoint_focus or "Not provided"),
-        ("Primary Endpoints",    protocol.primary_endpoints or "Not provided"),
-        ("Secondary Endpoints",  protocol.secondary_endpoints or "Not provided"),
     ]
-    story.append(_kv_table(profile_rows, styles))
+
+    # Protocol title rendered as a heading (can be long)
+    if protocol.title:
+        story.append(_p(f"<b>Protocol Title:</b>  {protocol.title}", styles["body"]))
+        story.append(Spacer(1, 0.1 * cm))
+
+    story.append(_kv_table(compact_rows, styles))
     story.append(Spacer(1, 0.3 * cm))
+
+    # Long free-text fields rendered as flowing paragraphs — cannot go in table cells
+    # because ReportLab cannot paginate within a single table row.
+    def _long_field_block(label: str, text: str | None) -> None:
+        if not text or str(text).strip().lower() in ("not provided", "none", "null", ""):
+            return
+        story.append(_p(f"<b>{label}</b>", styles["body"]))
+        story.append(Spacer(1, 0.05 * cm))
+        story.append(_p(str(text).strip(), styles["body"]))
+        story.append(Spacer(1, 0.2 * cm))
+
+    _long_field_block("Primary Endpoints", protocol.primary_endpoints)
+    _long_field_block("Secondary Endpoints", protocol.secondary_endpoints)
+    _long_field_block("Target Population & Eligibility Criteria", protocol.target_population)
+    _long_field_block("Intervention Description", protocol.intervention_description)
+    _long_field_block("Comparator / Control Arm", protocol.comparator)
 
     # ── 5. Precedent Posture ──────────────────────────────────────────────────
     if metrics:

@@ -1,11 +1,33 @@
-from .models import AuditEvent, ChatMessage, EvidenceReference, ProjectRun, ProtocolMetadata, ProvenanceRecord
+from .models import (
+    AuditEvent,
+    ChatMessage,
+    CohortSummary,
+    ComparisonResult,
+    DesignRecommendation,
+    DomainAlignmentResult,
+    DurationBenchmark,
+    EnrollmentBenchmark,
+    EvidenceBundle,
+    EvidenceReference,
+    ProjectRun,
+    ProtocolMetadata,
+    ProvenanceRecord,
+    RegistryTrialRef,
+)
 
 __all__ = [
     "AuditEvent",
     "ChatMessage",
+    "CohortSummary",
+    "ComparisonResult",
+    "DesignRecommendation",
+    "DomainAlignmentResult",
+    "DurationBenchmark",
+    "EnrollmentBenchmark",
+    "EvidenceBundle",
     "EvidenceReference",
     "ProjectRun",
     "ProtocolMetadata",
     "ProvenanceRecord",
+    "RegistryTrialRef",
 ]
-

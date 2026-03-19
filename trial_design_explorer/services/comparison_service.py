@@ -1,10 +1,21 @@
 import re
 import textwrap
+from datetime import datetime, timezone
 
 import pandas as pd
 
 from trial_design_explorer.config import DEFAULT_CONDITION
-from trial_design_explorer.domain import ProtocolMetadata
+from trial_design_explorer.domain import (
+    CohortSummary,
+    ComparisonResult,
+    DesignRecommendation,
+    DomainAlignmentResult,
+    DurationBenchmark,
+    EnrollmentBenchmark,
+    EvidenceBundle,
+    ProtocolMetadata,
+    RegistryTrialRef,
+)
 
 
 COMPLETED_STATUSES = {"COMPLETED"}
@@ -984,3 +995,367 @@ def _numeric_position_signal(value, low, high, unit: str = "enrollment") -> str:
     if value < low:
         return "Below completed-trial range" if unit == "enrollment" else "Shorter than completed-trial range"
     return "Within completed-trial range"
+
+
+# ── Typed comparison result builder ──────────────────────────────────────────
+
+
+def _trial_refs_for_domain(
+    frame: pd.DataFrame,
+    domain: dict,
+    protocol_value: str | None,
+    max_refs: int = 5,
+) -> list[RegistryTrialRef]:
+    """Extract RegistryTrialRef objects from matching rows for a domain."""
+    if frame is None or frame.empty or not protocol_value:
+        return []
+    series = _alignment_series(frame, domain)
+    target = protocol_value.strip().lower()
+    matching = frame[series.str.lower().str.contains(target, regex=False, na=False)]
+    refs = []
+    for _, row in matching.head(max_refs).iterrows():
+        nct_id = str(row.get("NCT ID", "")).strip()
+        if not nct_id:
+            continue
+        enrollment_raw = row.get("Enrollment")
+        try:
+            enrollment = int(enrollment_raw) if enrollment_raw not in (None, "", "nan") else None
+        except (ValueError, TypeError):
+            enrollment = None
+        refs.append(RegistryTrialRef(
+            nct_id=nct_id,
+            title=str(row.get("Title", ""))[:120],
+            status=str(row.get("Status", "")),
+            phase=str(row.get("Phase", "")) or None,
+            enrollment=enrollment,
+            sponsor=str(row.get("Sponsor", ""))[:60] or None,
+            start_date=str(row.get("Start Date", "")) or None,
+            completion_date=str(row.get("Completion Date", "")) or None,
+            primary_outcome=str(row.get("Primary Outcome", ""))[:120] or None,
+        ))
+    return refs
+
+
+def _build_domain_evidence(
+    domain_label: str,
+    completed_match: float | None,
+    disrupted_match: float | None,
+    signal: str,
+    completed_refs: list[RegistryTrialRef],
+    disrupted_refs: list[RegistryTrialRef],
+    evidence_strength: str,
+) -> EvidenceBundle:
+    stat_note = (
+        f"Completed match {_fmt_pct(completed_match)} | "
+        f"Disrupted match {_fmt_pct(disrupted_match)}"
+    )
+    if completed_match is not None and disrupted_match is not None:
+        gap = completed_match - disrupted_match
+        if gap >= 15:
+            interpretation = (
+                f"Protocol choice aligns with completed-trial majority — "
+                f"a {gap:.1f}pp advantage over disrupted precedent."
+            )
+        elif gap <= -15:
+            interpretation = (
+                f"Protocol choice aligns more with disrupted-trial pattern — "
+                f"a {abs(gap):.1f}pp deficit relative to completed precedent.  "
+                f"This domain warrants explicit justification."
+            )
+        else:
+            interpretation = (
+                f"Mixed signal — the gap between completed and disrupted alignment "
+                f"is {gap:+.1f}pp, below the ±15pp threshold for a strong directional call."
+            )
+    else:
+        interpretation = "Insufficient matched evidence to determine direction."
+
+    all_refs = completed_refs[:3] + disrupted_refs[:2]
+    return EvidenceBundle(
+        statistical_note=stat_note,
+        strength=evidence_strength,
+        source_count=len(completed_refs) + len(disrupted_refs),
+        references=all_refs,
+        interpretation=interpretation,
+    )
+
+
+def _build_enrollment_evidence(
+    target: int | None,
+    completed_p25: float | None,
+    completed_p75: float | None,
+    completed_median: float | None,
+    disrupted_median: float | None,
+    signal: str,
+    evidence_strength: str,
+    completed_df: pd.DataFrame,
+) -> EvidenceBundle:
+    stat_note = (
+        f"Protocol target {target if target else 'not specified'} | "
+        f"Completed median {completed_median} (IQR {completed_p25}–{completed_p75}) | "
+        f"Disrupted median {disrupted_median}"
+    )
+    if target and completed_p75 and target > completed_p75:
+        interpretation = (
+            f"Target exceeds the upper bound of completed-trial range.  "
+            f"Feasibility risk is elevated — site capacity and eligibility criteria need pressure-testing."
+        )
+    elif target and completed_p25 and target < completed_p25:
+        interpretation = (
+            f"Target is below the completed-trial lower bound.  "
+            f"Confirm the smaller enrollment still supports the stated decision ambition."
+        )
+    else:
+        interpretation = (
+            f"Target sits within the completed-trial IQR.  "
+            f"Execution and site selection are the primary feasibility levers."
+        )
+
+    # Pull exemplar refs from completed trials
+    refs = []
+    if not completed_df.empty:
+        for _, row in completed_df.head(5).iterrows():
+            nct_id = str(row.get("NCT ID", "")).strip()
+            if not nct_id:
+                continue
+            try:
+                enroll = int(row.get("Enrollment"))
+            except (ValueError, TypeError):
+                enroll = None
+            refs.append(RegistryTrialRef(
+                nct_id=nct_id,
+                title=str(row.get("Title", ""))[:100],
+                status=str(row.get("Status", "")),
+                enrollment=enroll,
+                sponsor=str(row.get("Sponsor", ""))[:50] or None,
+            ))
+
+    return EvidenceBundle(
+        statistical_note=stat_note,
+        strength=evidence_strength,
+        source_count=len(refs),
+        references=refs,
+        interpretation=interpretation,
+    )
+
+
+def _build_duration_evidence(
+    protocol_months: float | None,
+    completed_median: float | None,
+    completed_p25: float | None,
+    completed_p75: float | None,
+    evidence_strength: str,
+) -> EvidenceBundle:
+    stat_note = (
+        f"Protocol planned {protocol_months} months | "
+        f"Completed median {completed_median} months (IQR {completed_p25}–{completed_p75})"
+    )
+    if protocol_months and completed_p75 and protocol_months > completed_p75:
+        interpretation = "Planned duration exceeds the completed-trial upper quartile.  Consider whether the timeline is realistic."
+    elif protocol_months and completed_p25 and protocol_months < completed_p25:
+        interpretation = "Planned duration is below the completed-trial lower quartile.  Confirm it accounts for regulatory, operational, and data maturity requirements."
+    elif protocol_months:
+        interpretation = "Planned duration is within the completed-trial precedent range."
+    else:
+        interpretation = "Protocol duration not available for positioning."
+    return EvidenceBundle(
+        statistical_note=stat_note,
+        strength=evidence_strength,
+        source_count=0,
+        interpretation=interpretation,
+    )
+
+
+def _build_recommendation_evidence(
+    rec_dict: dict,
+    evidence_strength: str,
+    domain_refs: list[RegistryTrialRef] | None = None,
+) -> EvidenceBundle:
+    return EvidenceBundle(
+        statistical_note=rec_dict.get("Evidence", ""),
+        strength=evidence_strength,
+        source_count=len(domain_refs or []),
+        references=domain_refs or [],
+        interpretation=rec_dict.get("Rationale", ""),
+    )
+
+
+def build_comparison_result(
+    protocol_meta: ProtocolMetadata,
+    trials_df: pd.DataFrame,
+) -> ComparisonResult:
+    """
+    Build a fully-typed ComparisonResult with EvidenceBundle objects
+    attached to every domain alignment row and recommendation.
+
+    This is the canonical comparison entry point.  The flat dict API
+    (build_protocol_comparison_metrics / build_protocol_recommendations)
+    remains available for backward compatibility; ComparisonResult.to_metrics_dict()
+    and .to_recommendations_list() bridge between the two.
+    """
+    from trial_design_explorer.services.audit_service import current_utc_timestamp
+
+    # Use existing flat builders as the computation core
+    flat_metrics = build_protocol_comparison_metrics(protocol_meta, trials_df)
+    flat_recs = build_protocol_recommendations(protocol_meta, flat_metrics)
+
+    evidence_strength = flat_metrics.get("evidence_strength", "Limited")
+    timestamp = current_utc_timestamp()
+
+    # ── Subset frames ─────────────────────────────────────────────────────────
+    if trials_df is not None and not trials_df.empty:
+        norm_statuses = trials_df["Status"].fillna("").astype(str).apply(_normalize_status)
+        completed_df = trials_df[norm_statuses.isin(COMPLETED_STATUSES)].copy()
+        disrupted_df = trials_df[norm_statuses.isin(RISK_STATUSES)].copy()
+        active_df    = trials_df[norm_statuses.isin(ACTIVE_STATUSES)].copy()
+    else:
+        completed_df = disrupted_df = active_df = pd.DataFrame()
+
+    # ── CohortSummary ─────────────────────────────────────────────────────────
+    cohort = CohortSummary(
+        condition=flat_metrics.get("condition", protocol_meta.condition or DEFAULT_CONDITION),
+        total_count=flat_metrics.get("cohort_size", 0),
+        completed_count=flat_metrics.get("completed_cohort_size", 0),
+        disrupted_count=flat_metrics.get("disrupted_cohort_size", 0),
+        active_count=flat_metrics.get("active_cohort_size", 0),
+        evidence_strength=evidence_strength,
+        risk_share_pct=flat_metrics.get("risk_status_share_pct"),
+        completed_share_pct=flat_metrics.get("completed_share_pct"),
+        site_count_median=flat_metrics.get("site_count_median"),
+        country_count_median=flat_metrics.get("country_count_median"),
+        status_distribution=flat_metrics.get("status_distribution", {}),
+        sponsor_type_distribution=flat_metrics.get("sponsor_type_distribution", {}),
+        endpoint_category_distribution=flat_metrics.get("endpoint_category_distribution", {}),
+        completed_endpoint_distribution=flat_metrics.get("completed_endpoint_distribution", {}),
+        disrupted_endpoint_distribution=flat_metrics.get("disrupted_endpoint_distribution", {}),
+    )
+
+    # ── EnrollmentBenchmark ───────────────────────────────────────────────────
+    enroll_signal = _numeric_position_signal(
+        flat_metrics.get("enrollment_target"),
+        flat_metrics.get("completed_enrollment_p25"),
+        flat_metrics.get("completed_enrollment_p75"),
+    )
+    enrollment = EnrollmentBenchmark(
+        target=flat_metrics.get("enrollment_target"),
+        overall_median=flat_metrics.get("enrollment_median"),
+        overall_p25=flat_metrics.get("enrollment_p25"),
+        overall_p75=flat_metrics.get("enrollment_p75"),
+        completed_median=flat_metrics.get("completed_enrollment_median"),
+        completed_p25=flat_metrics.get("completed_enrollment_p25"),
+        completed_p75=flat_metrics.get("completed_enrollment_p75"),
+        disrupted_median=flat_metrics.get("disrupted_enrollment_median"),
+        disrupted_p25=flat_metrics.get("disrupted_enrollment_p25"),
+        disrupted_p75=flat_metrics.get("disrupted_enrollment_p75"),
+        percentile_rank=flat_metrics.get("enrollment_percentile"),
+        signal=enroll_signal,
+        evidence=_build_enrollment_evidence(
+            flat_metrics.get("enrollment_target"),
+            flat_metrics.get("completed_enrollment_p25"),
+            flat_metrics.get("completed_enrollment_p75"),
+            flat_metrics.get("completed_enrollment_median"),
+            flat_metrics.get("disrupted_enrollment_median"),
+            enroll_signal,
+            evidence_strength,
+            completed_df,
+        ),
+    )
+
+    # ── DurationBenchmark ─────────────────────────────────────────────────────
+    dur_signal = _numeric_position_signal(
+        flat_metrics.get("protocol_duration_months"),
+        flat_metrics.get("completed_duration_p25_months"),
+        flat_metrics.get("completed_duration_p75_months"),
+        unit="duration",
+    )
+    duration = DurationBenchmark(
+        protocol_months=flat_metrics.get("protocol_duration_months"),
+        overall_median_months=flat_metrics.get("duration_median_months"),
+        overall_p25_months=flat_metrics.get("duration_p25_months"),
+        overall_p75_months=flat_metrics.get("duration_p75_months"),
+        completed_median_months=flat_metrics.get("completed_duration_median_months"),
+        completed_p25_months=flat_metrics.get("completed_duration_p25_months"),
+        completed_p75_months=flat_metrics.get("completed_duration_p75_months"),
+        disrupted_median_months=flat_metrics.get("disrupted_duration_median_months"),
+        disrupted_p25_months=flat_metrics.get("disrupted_duration_p25_months"),
+        disrupted_p75_months=flat_metrics.get("disrupted_duration_p75_months"),
+        signal=dur_signal,
+        evidence=_build_duration_evidence(
+            flat_metrics.get("protocol_duration_months"),
+            flat_metrics.get("completed_duration_median_months"),
+            flat_metrics.get("completed_duration_p25_months"),
+            flat_metrics.get("completed_duration_p75_months"),
+            evidence_strength,
+        ),
+    )
+
+    # ── DomainAlignmentResult list ────────────────────────────────────────────
+    domain_results: list[DomainAlignmentResult] = []
+    domain_refs_by_label: dict[str, list[RegistryTrialRef]] = {}
+
+    for flat_row, domain_def in zip(
+        flat_metrics.get("alignment_by_domain", []),
+        ALIGNMENT_DOMAINS,
+    ):
+        protocol_value = flat_row.get("Protocol Choice")
+        comp_match = flat_row.get("Completed Match (%)")
+        disr_match = flat_row.get("Disrupted Match (%)")
+        signal = flat_row.get("Signal", "")
+
+        c_refs = _trial_refs_for_domain(completed_df, domain_def, protocol_value, max_refs=4)
+        d_refs = _trial_refs_for_domain(disrupted_df, domain_def, protocol_value, max_refs=3)
+        domain_refs_by_label[flat_row.get("Domain", "")] = c_refs + d_refs
+
+        ev = _build_domain_evidence(
+            flat_row.get("Domain", ""),
+            comp_match,
+            disr_match,
+            signal,
+            c_refs,
+            d_refs,
+            evidence_strength,
+        )
+        domain_results.append(DomainAlignmentResult(
+            domain=flat_row.get("Domain", ""),
+            protocol_choice=str(protocol_value or "Not provided"),
+            overall_match_pct=flat_row.get("Overall Match (%)"),
+            completed_match_pct=comp_match,
+            disrupted_match_pct=disr_match,
+            net_gap_pct=flat_row.get("Net Gap (%)"),
+            signal=signal,
+            why_it_matters=flat_row.get("Why It Matters", ""),
+            evidence=ev,
+        ))
+
+    # ── DesignRecommendation list ─────────────────────────────────────────────
+    design_recs: list[DesignRecommendation] = []
+    for flat_rec in flat_recs:
+        category = flat_rec.get("Category", "")
+        refs = domain_refs_by_label.get(category, [])
+        ev = _build_recommendation_evidence(flat_rec, evidence_strength, refs)
+        design_recs.append(DesignRecommendation(
+            priority=flat_rec.get("Priority", "Monitor"),
+            category=category,
+            action_type=flat_rec.get("Action Type", "Monitor"),
+            recommendation=flat_rec.get("Recommendation", ""),
+            rationale=flat_rec.get("Rationale", ""),
+            evidence=ev,
+        ))
+
+    # ── ComparisonResult ──────────────────────────────────────────────────────
+    return ComparisonResult(
+        protocol_condition=flat_metrics.get("condition", DEFAULT_CONDITION),
+        timestamp=timestamp,
+        cohort=cohort,
+        enrollment=enrollment,
+        duration=duration,
+        alignment_by_domain=domain_results,
+        design_alignment_index=flat_metrics.get("design_alignment_index"),
+        completed_design_fit_pct=flat_metrics.get("completed_design_fit_pct"),
+        disrupted_design_fit_pct=flat_metrics.get("disrupted_design_fit_pct"),
+        precedent_gap_pct=flat_metrics.get("precedent_gap_pct"),
+        precedent_posture=flat_metrics.get("precedent_posture", "Incomplete precedent signal"),
+        missing_core_fields=flat_metrics.get("missing_core_fields", []),
+        protocol_endpoint_focus=flat_metrics.get("protocol_endpoint_focus", ""),
+        recommendations=design_recs,
+    )

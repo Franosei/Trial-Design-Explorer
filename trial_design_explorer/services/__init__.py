@@ -1,8 +1,17 @@
 from .audit_service import build_audit_event, current_utc_timestamp
-from .clinical_trials_service import fetch_trials_by_condition, parse_trials_to_df
+from .clinical_trials_service import (
+    build_design_similar_cohort,
+    classify_similarity,
+    cohort_selection_summary,
+    fetch_trials_by_condition,
+    parse_trials_to_df,
+    score_domain_breakdown,
+    score_trial_design_similarity,
+)
 from .comparison_service import (
     build_action_register,
     build_cohort_definition_table,
+    build_comparison_result,
     build_design_differential_table,
     build_endpoint_precedent_table,
     build_protocol_benchmark_table,
@@ -27,6 +36,12 @@ __all__ = [
     "articles_to_evidence_rows",
     "build_audit_event",
     "build_action_register",
+    "build_comparison_result",
+    "build_design_similar_cohort",
+    "classify_similarity",
+    "cohort_selection_summary",
+    "score_domain_breakdown",
+    "score_trial_design_similarity",
     "build_cohort_definition_table",
     "build_design_differential_table",
     "build_endpoint_precedent_table",
